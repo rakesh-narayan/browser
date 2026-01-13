@@ -60,7 +60,7 @@ module Browser
     def name
       return unless bot?
 
-      self.class.bots.find {|key, _| ua.include?(key) }&.last || GENERIC_NAME
+      self.class.bots.find {|key, _| ua.include?(key) }.andand.last || GENERIC_NAME
     end
 
     private def bot_exception?

@@ -22,7 +22,7 @@ Gem::Specification.new do |s|
                     .map {|f| File.basename(f) }
   s.require_paths = ["lib"]
 
-  s.required_ruby_version = ">= 2.2.10", "< 2.3.9"
+  # s.required_ruby_version = ">= 2.2.10", "< 2.3.9"
 
   s.add_development_dependency "bundler", ">= 0"
   s.add_development_dependency "minitest"
