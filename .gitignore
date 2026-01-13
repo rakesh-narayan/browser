@@ -3,3 +3,5 @@ coverage
 doc
 log
 *.lock
+bin/
+.bundle

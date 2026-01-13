@@ -1,8 +1,5 @@
-class Browser
-  module Version
-    MAJOR = 0
-    MINOR = 7
-    PATCH = 0
-    STRING = "#{MAJOR}.#{MINOR}.#{PATCH}"
-  end
+# frozen_string_literal: true
+
+module Browser
+  VERSION = "4.2.0"
 end

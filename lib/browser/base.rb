@@ -1,193 +1,231 @@
-require "set"
-require "yaml"
-require "pathname"
+# frozen_string_literal: true
 
-require "browser/methods/ie"
-require "browser/methods/platform"
-require "browser/methods/mobile"
-require "browser/methods/devices"
-require "browser/methods/consoles"
-require "browser/methods/language"
-require "browser/methods/bots"
-require "browser/methods/tv"
+module Browser
+  class Base
+    include DetectVersion
 
-require "browser/meta/base"
-require "browser/meta/generic_browser"
-require "browser/meta/id"
-require "browser/meta/ie"
-require "browser/meta/ios"
-require "browser/meta/mobile"
-require "browser/meta/modern"
-require "browser/meta/platform"
-require "browser/meta/safari"
-require "browser/meta/webkit"
+    attr_reader :ua
 
-class Browser
-  include IE
-  include Platform
-  include Mobile
-  include Devices
-  include Consoles
-  include Language
-  include Bots
-  include Tv
+    # Return an array with all preferred languages that this browser accepts.
+    attr_reader :accept_language
 
-  # Set browser's UA string.
-  attr_accessor :user_agent
-  alias_method :ua, :user_agent
-  alias_method :ua=, :user_agent=
+    def initialize(ua, accept_language: nil)
+      @ua = ua
+      @accept_language = AcceptLanguage.parse(accept_language)
+    end
 
-  NAMES = {
-    chrome: "Chrome", # Must come before android
-    android: "Android",
-    blackberry: "BlackBerry",
-    core_media: "Apple CoreMedia",
-    firefox: "Firefox",
-    ie: "Internet Explorer",
-    ipad: "iPad",
-    iphone: "iPhone",
-    ipod: "iPod Touch",
-    nintendo: "Nintendo",
-    opera: "Opera",
-    phantom_js: "PhantomJS",
-    psp: "PlayStation Portable",
-    playstation: "PlayStation",
-    quicktime: "QuickTime",
-    safari: "Safari",
-    xbox: "Xbox",
+    # Return a meta info about this browser.
+    def meta
+      Meta.get(self)
+    end
 
-    # This must be last item, since Ruby 1.9+ has ordered keys.
-    other: "Other",
-  }
+    alias_method :to_a, :meta
 
-  VERSIONS = {
-    chrome: %r[(?:Chrome|CriOS)/([\d.]+)],
-    default: %r[(?:Version|MSIE|Firefox|QuickTime|BlackBerry[^/]+|CoreMedia v|PhantomJS)[/ ]?([a-z0-9.]+)]i,
-    opera: %r[(?:Opera/.*? Version/([\d.]+)|Chrome/([\d.]+).*?OPR)],
-    ie: %r[(?:MSIE |Trident/.*?; rv:)([\d.]+)]
-  }
+    # Return meta representation as string.
+    def to_s
+      meta.to_a.join(" ")
+    end
 
-  # Define the rules which define a modern browser.
-  # A rule must be a proc/lambda or any object that implements the method
-  # === and accepts the browser object.
-  #
-  # To redefine all rules, clear the existing rules before adding your own.
-  #
-  #   # Only Chrome Canary is considered modern.
-  #   Browser.modern_rules.clear
-  #   Browser.modern_rules << -> b { b.chrome? && b.version >= '37' }
-  #
-  def self.modern_rules
-    @modern_rules ||= []
-  end
+    def version
+      full_version.split(".").first
+    end
 
-  self.modern_rules.tap do |rules|
-    rules << -> b { b.webkit? }
-    rules << -> b { b.firefox? && b.version.to_i >= 17 }
-    rules << -> b { b.ie? && b.version.to_i >= 9 }
-    rules << -> b { b.opera? && b.version.to_i >= 12 }
-    rules << -> b { b.firefox? && b.tablet? && b.android? && b.version.to_i >= 14 }
-  end
+    # Return the platform.
+    def platform
+      @platform ||= Platform.new(ua)
+    end
 
-  # Create a new browser instance and set
-  # the UA and Accept-Language headers.
-  #
-  #   browser = Browser.new({
-  #     :ua => "Safari",
-  #     :accept_language => "pt-br"
-  #   })
-  #
-  def initialize(options = {}, &block)
-    self.user_agent = (options[:user_agent] || options[:ua]).to_s
-    self.accept_language = options[:accept_language].to_s
+    # Return the bot info.
+    def bot
+      @bot ||= Bot.new(ua)
+    end
 
-    yield self if block
-  end
+    # Detect if current user agent is from a bot.
+    def bot?
+      bot.bot?
+    end
 
-  # Get readable browser name.
-  def name
-    NAMES[id]
-  end
+    # Return the device info.
+    def device
+      @device ||= Device.new(ua)
+    end
 
-  # Get the browser identifier.
-  def id
-    NAMES.keys
-      .find {|id| respond_to?("#{id}?") ? public_send("#{id}?") : id }
-  end
+    # Detect if browser is Microsoft Internet Explorer.
+    def ie?(expected_version = nil)
+      InternetExplorer.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
 
-  # Return major version.
-  def version
-    full_version.to_s.split(".").first
-  end
+    # Detect if browser is Microsoft Edge.
+    def edge?(expected_version = nil)
+      Edge.new(ua).match? && detect_version?(full_version, expected_version)
+    end
 
-  # Return the full version.
-  def full_version
-    _, *v = *ua.match(VERSIONS.fetch(id, VERSIONS[:default]))
-    v.compact.first || "0.0"
-  end
+    def compatibility_view?
+      false
+    end
 
-  # Return true if browser is modern (Webkit, Firefox 17+, IE9+, Opera 12+).
-  def modern?
-    self.class.modern_rules.any? {|rule| rule === self }
-  end
+    def msie_full_version
+      "0.0"
+    end
 
-  # Detect if browser is WebKit-based.
-  def webkit?
-    !!(ua =~ /AppleWebKit/i)
-  end
+    def msie_version
+      "0"
+    end
 
-  # Detect if browser is QuickTime
-  def quicktime?
-    !!(ua =~ /QuickTime/i)
-  end
+    # Detect if browser is Instagram.
+    def instagram?(expected_version = nil)
+      Instagram.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
 
-  # Detect if browser is Apple CoreMedia.
-  def core_media?
-    !!(ua =~ /CoreMedia/)
-  end
+    # Detect if browser is Snapchat.
+    def snapchat?(expected_version = nil)
+      Snapchat.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
 
-  # Detect if browser is PhantomJS
-  def phantom_js?
-    !!(ua =~ /PhantomJS/)
-  end
+    # Detect if browser if Facebook.
+    def facebook?(expected_version = nil)
+      Facebook.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
 
-  # Detect if browser is Safari.
-  def safari?
-    ua =~ /Safari/ && ua !~ /Android|Chrome|CriOS|PhantomJS/
-  end
+    # Detect if browser is Otter.
+    def otter?(expected_version = nil)
+      Otter.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
 
-  # Detect if browser is Firefox.
-  def firefox?
-    !!(ua =~ /Firefox/)
-  end
+    # Detect if browser is WebKit-based.
+    def webkit?(expected_version = nil)
+      ua =~ /AppleWebKit/i &&
+        (!edge? || Edge.new(ua).chrome_based?) &&
+        detect_version?(webkit_full_version, expected_version)
+    end
 
-  # Detect if browser is Chrome.
-  def chrome?
-    !!(ua =~ /Chrome|CriOS/) && !opera?
-  end
+    # Detect if browser is QuickTime
+    def quicktime?(expected_version = nil)
+      ua =~ /QuickTime/i && detect_version?(full_version, expected_version)
+    end
 
-  # Detect if browser is Opera.
-  def opera?
-    !!(ua =~ /(Opera|OPR)/)
-  end
+    # Detect if browser is Apple CoreMedia.
+    def core_media?(expected_version = nil)
+      ua =~ /CoreMedia/ && detect_version?(full_version, expected_version)
+    end
 
-  # Detect if browser is Silk.
-  def silk?
-    !!(ua =~ /Silk/)
-  end
+    # Detect if browser is PhantomJS
+    def phantom_js?(expected_version = nil)
+      PhantomJS.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
 
-  # Return a meta info about this browser.
-  def meta
-    Meta.constants.each_with_object(Set.new) do |meta_name, meta|
-      meta_class = Meta.const_get(meta_name)
-      meta.merge(meta_class.new(self).to_a)
-    end.to_a
-  end
+    # Detect if browser is Safari.
+    def safari?(expected_version = nil)
+      Safari.new(ua).match? && detect_version?(full_version, expected_version)
+    end
 
-  alias_method :to_a, :meta
+    def safari_webapp_mode?
+      (device.ipad? || device.iphone?) && ua =~ /AppleWebKit/
+    end
 
-  # Return meta representation as string.
-  def to_s
-    meta.to_a.join(" ")
+    # Detect if browser is Firefox.
+    def firefox?(expected_version = nil)
+      Firefox.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Chrome.
+    def chrome?(expected_version = nil)
+      Chrome.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Opera.
+    def opera?(expected_version = nil)
+      Opera.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Sputnik.
+    def sputnik?(expected_version = nil)
+      Sputnik.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Yandex.
+    def yandex?(expected_version = nil)
+      Yandex.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+    alias_method :yandex_browser?, :yandex?
+
+    # Detect if browser is UCBrowser.
+    def uc_browser?(expected_version = nil)
+      UCBrowser.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Nokia S40 Ovi Browser.
+    def nokia?(expected_version = nil)
+      Nokia.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is MicroMessenger.
+    def micro_messenger?(expected_version = nil)
+      MicroMessenger.new(ua).match? &&
+        detect_version?(full_version, expected_version)
+    end
+
+    alias_method :wechat?, :micro_messenger?
+
+    def weibo?(expected_version = nil)
+      Weibo.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    def alipay?(expected_version = nil)
+      Alipay.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Opera Mini.
+    def opera_mini?(expected_version = nil)
+      ua =~ /Opera Mini/ && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is DuckDuckGo.
+    def duck_duck_go?(expected_version = nil)
+      ua =~ /DuckDuckGo/ && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Samsung.
+    def samsung_browser?(expected_version = nil)
+      ua =~ /SamsungBrowser/ && detect_version?(full_version, expected_version)
+    end
+
+    def maxthon?(expected_version = nil)
+      Maxthon.new(ua).match? && detect_version?(full_version, expected_version)
+    end
+
+    # Detect if browser is Google Search App
+    def google_search_app?(expected_version = nil)
+      ua =~ /GSA/ && detect_version?(full_version, expected_version)
+    end
+
+    def webkit_full_version
+      ua[%r{AppleWebKit/([\d.]+)}, 1] || "0.0"
+    end
+
+    def known?
+      !unknown?
+    end
+
+    def unknown?
+      id == :unknown_browser
+    end
+
+    # Detect if browser is a proxy browser.
+    def proxy?
+      nokia? || uc_browser? || opera_mini?
+    end
+
+    # Detect if the browser is Electron.
+    def electron?(expected_version = nil)
+      Electron.new(ua).match? && detect_version?(full_version, expected_version)
+    end
   end
 end

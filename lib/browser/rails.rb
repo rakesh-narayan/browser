@@ -1,14 +1,23 @@
-require "rails/railtie"
-require "browser/action_controller"
-require "browser/middleware/context/additions"
+# frozen_string_literal: true
 
-class Browser
+require "rails/railtie"
+require_relative "action_controller"
+require_relative "middleware/context/additions"
+
+module Browser
   class Railtie < Rails::Railtie
     config.browser = ActiveSupport::OrderedOptions.new
 
     initializer "browser" do
-      ::ActionController::Base.send :include, Browser::ActionController
-      Browser::Middleware::Context.send :include, Browser::Middleware::Context::Additions
+      ActiveSupport.on_load(:action_controller) do
+        ::ActionController::Base.include(Browser::ActionController)
+
+        ::ActionController::Metal.include(Browser::ActionController) if defined?(::ActionController::Metal) # rubocop:disable Layout/LineLength
+
+        Browser::Middleware::Context.include(
+          Browser::Middleware::Context::Additions
+        )
+      end
     end
   end
 end

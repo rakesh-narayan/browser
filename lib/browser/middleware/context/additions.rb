@@ -1,6 +1,8 @@
-require "browser/middleware/context/url_methods"
+# frozen_string_literal: true
 
-class Browser
+require_relative "url_methods"
+
+module Browser
   class Middleware
     class Context
       module Additions
