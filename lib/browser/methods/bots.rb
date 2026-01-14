@@ -19,5 +19,26 @@ class Browser
     def search_engine?
       SEARCH_ENGINES.any? {|key, _| ua.include?(key) }
     end
+
+    # Enhanced bot detection that checks both keys and values from BOTS case-insensitively
+    # return true if the user agent matches any bot in BOTS hash (by key or value, case-insensitive)
+    def bot_detected?
+      # Check for empty user agent (same as original bot? method)
+      return true if Browser::Bots.detect_empty_ua? && ua.strip == ""
+      
+      # Normalize user agent to lowercase for case-insensitive matching
+      ua_lower = ua.to_s.downcase
+      
+      # Check both keys and values case-insensitively
+      BOTS.any? do |key, value|
+        key_str = key.to_s
+        value_str = value.to_s
+        
+        # Check if UA includes the key (case-insensitive)
+        ua_lower.include?(key_str.downcase) ||
+        # Check if UA includes the value (case-insensitive)
+        (!value_str.nil? && !value_str.empty? && ua_lower.include?(value_str.downcase))
+      end
+    end
   end
 end
